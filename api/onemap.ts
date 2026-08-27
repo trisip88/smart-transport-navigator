@@ -149,6 +149,7 @@ export async function getOneMapRoute(
     time?: string;
     mode?: 'TRANSIT' | 'BUS' | 'RAIL';
     maxWalkDistance?: number;
+    numItineraries?: number;
   }
 ) {
   if (!startLat || !startLng || !endLat || !endLng) {
@@ -162,7 +163,22 @@ export async function getOneMapRoute(
   if (options?.date) url += `&date=${encodeURIComponent(options.date)}`;
   if (options?.time) url += `&time=${encodeURIComponent(options.time)}`;
   if (options?.mode) url += `&mode=${encodeURIComponent(options.mode)}`;
-  if (options?.maxWalkDistance) url += `&maxWalkDistance=${encodeURIComponent(options.maxWalkDistance)}`;
+  if (options?.maxWalkDistance) {
+    url += `&maxWalkDistance=${encodeURIComponent(options.maxWalkDistance)}`;
+  } else if (routeType === 'pt') {
+    url += `&maxWalkDistance=2500`;
+  }
+  if (options?.numItineraries) {
+    url += `&numItineraries=${encodeURIComponent(options.numItineraries)}`;
+  }
 
-  return fetchOneMapEndpoint(url);
+  try {
+    return await fetchOneMapEndpoint(url);
+  } catch (err: any) {
+    // If OneMap returns 404 "No route found", return an empty plan structure gracefully
+    if (err.message && (err.message.includes('404') || err.message.includes('No route found'))) {
+      return { plan: { itineraries: [] }, error: 'No route found between coordinates' };
+    }
+    throw err;
+  }
 }

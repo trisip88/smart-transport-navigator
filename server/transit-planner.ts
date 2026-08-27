@@ -42,12 +42,13 @@ function normalizeLineCode(rawCode?: string): string {
  */
 export async function geocodePlace(placeName: string, userLat?: number, userLng?: number): Promise<LatLng> {
   const trimmed = placeName.trim();
+  const lower = trimmed.toLowerCase();
 
-  // 1. Current location
+  // 1. Current location / GPS
   if (
-    trimmed.toLowerCase().includes('current') ||
-    trimmed.toLowerCase().includes('gps') ||
-    trimmed.toLowerCase().includes('my location')
+    lower.includes('current') ||
+    lower.includes('gps') ||
+    lower.includes('my location')
   ) {
     return {
       lat: userLat || 1.3343,
@@ -56,45 +57,72 @@ export async function geocodePlace(placeName: string, userLat?: number, userLng?
     };
   }
 
-  // 2. Exact match in SG_LOCATIONS
+  // 2. Exact or key match in SG_LOCATIONS
   for (const [key, loc] of Object.entries(SG_LOCATIONS)) {
-    if (trimmed.toLowerCase() === key.toLowerCase() || trimmed.toLowerCase() === loc.name.toLowerCase()) {
+    if (
+      lower === key.toLowerCase() ||
+      lower === loc.name.toLowerCase() ||
+      (loc.code && lower === loc.code.toLowerCase())
+    ) {
       return { lat: loc.lat, lng: loc.lng, name: loc.name };
     }
   }
 
-  // 3. Partial match in POPULAR_PLACES
-  const foundPopular = POPULAR_PLACES.find(
-    (p) =>
-      p.name.toLowerCase().includes(trimmed.toLowerCase()) ||
-      trimmed.toLowerCase().includes(p.name.toLowerCase()) ||
-      (p.code && trimmed.toLowerCase().includes(p.code.toLowerCase()))
-  );
-  if (foundPopular) {
-    const loc = Object.values(SG_LOCATIONS).find((l) => l.name.toLowerCase().includes(foundPopular.name.toLowerCase()));
-    if (loc) return { lat: loc.lat, lng: loc.lng, name: foundPopular.name };
+  // 3. Substring match in SG_LOCATIONS
+  for (const [key, loc] of Object.entries(SG_LOCATIONS)) {
+    const keyLower = key.toLowerCase();
+    const nameLower = loc.name.toLowerCase();
+    if (
+      lower.includes(keyLower) ||
+      keyLower.includes(lower) ||
+      lower.includes(nameLower) ||
+      nameLower.includes(lower)
+    ) {
+      return { lat: loc.lat, lng: loc.lng, name: loc.name };
+    }
   }
 
-  // 4. Live OneMap Search
+  // 4. Partial match in POPULAR_PLACES
+  const foundPopular = POPULAR_PLACES.find(
+    (p) =>
+      p.name.toLowerCase().includes(lower) ||
+      lower.includes(p.name.toLowerCase()) ||
+      (p.code && lower.includes(p.code.toLowerCase()))
+  );
+  if (foundPopular) {
+    const matchedLoc = Object.values(SG_LOCATIONS).find((l) =>
+      l.name.toLowerCase().includes(foundPopular.name.toLowerCase()) ||
+      foundPopular.name.toLowerCase().includes(l.name.toLowerCase())
+    );
+    if (matchedLoc) return { lat: matchedLoc.lat, lng: matchedLoc.lng, name: foundPopular.name };
+  }
+
+  // 5. Live OneMap Search
   try {
     const searchRes = await searchOneMapPlaces(trimmed, 'Y', 'Y', 1);
     if (searchRes?.results && searchRes.results.length > 0) {
-      const first = searchRes.results[0];
-      const lat = parseFloat(first.LATITUDE);
-      const lng = parseFloat(first.LONGITUDE);
+      // Find the best valid result in Singapore coordinates
+      const validResult = searchRes.results.find((r: any) => {
+        const lat = parseFloat(r.LATITUDE);
+        const lng = parseFloat(r.LONGITUDE);
+        return !isNaN(lat) && !isNaN(lng) && lat >= 1.20 && lat <= 1.48 && lng >= 103.60 && lng <= 104.05;
+      }) || searchRes.results[0];
+
+      const lat = parseFloat(validResult.LATITUDE);
+      const lng = parseFloat(validResult.LONGITUDE);
       if (!isNaN(lat) && !isNaN(lng)) {
         return {
           lat,
           lng,
-          name: first.BUILDING && first.BUILDING !== 'NIL' ? first.BUILDING : first.SEARCHVAL || trimmed,
+          name: validResult.BUILDING && validResult.BUILDING !== 'NIL' ? validResult.BUILDING : validResult.SEARCHVAL || trimmed,
         };
       }
     }
-  } catch (e) {
-    console.warn(`OneMap geocoding failed for "${trimmed}":`, (e as Error).message);
+  } catch {
+    // Silently fall through to Singapore central coords
   }
 
-  // 5. Fallback Default Coordinates in Central Singapore
+  // 6. Fallback Default Coordinates in Central Singapore
   return {
     lat: 1.3040,
     lng: 103.8318,
@@ -621,15 +649,16 @@ export async function planTransitRoute(params: {
         date: dateStr,
         time: timeStr,
         mode: ptMode,
-        maxWalkDistance: 1500,
+        maxWalkDistance: 2500,
+        numItineraries: 3,
       }
     );
 
     if (oneMapData?.plan?.itineraries && oneMapData.plan.itineraries.length > 0) {
       routes = transformOneMapItineraries(oneMapData.plan.itineraries, originLoc.name, destLoc.name, transportMode);
     }
-  } catch (err) {
-    console.warn('OneMap PT routing fallback:', (err as Error).message);
+  } catch {
+    // Seamless fallback to Singapore network engine if OneMap transit graph is unavailable
   }
 
   // 3. Fallback to dynamic realistic Singapore transit generator if OneMap returned empty
