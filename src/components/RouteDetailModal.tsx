@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { DiscussionEmbed } from 'disqus-react';
 import { RouteOption } from '../types';
 
 interface RouteDetailModalProps {
@@ -17,8 +18,20 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   if (!route) return null;
+
+  const currentUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/route/${route.id}`
+    : `https://smarttransport.sg/route/${route.id}`;
+
+  const routeDisqusConfig = {
+    url: currentUrl,
+    identifier: `smarttransport-route-${route.id}`,
+    title: `Route Itinerary: ${route.departureTime} to ${route.arrivalTime} (${route.totalDurationMinutes} mins)`,
+    language: 'en',
+  };
 
   const handleShare = () => {
     navigator.clipboard?.writeText(
@@ -223,6 +236,37 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
                   </div>
                 );
               })}
+            </div>
+
+            {/* Commuter Discussion / Reviews Toggle & Embed */}
+            <div className="mt-6 pt-4 border-t border-[#c1c6d3]">
+              <button
+                onClick={() => setShowComments(!showComments)}
+                className="w-full py-2.5 px-4 bg-[#f7f2f8] hover:bg-[#ece6ee] rounded-xl border border-[#c1c6d3] flex items-center justify-between transition-colors cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="p-1 bg-[#004481]/10 text-[#004481] rounded-md flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[18px]">forum</span>
+                  </span>
+                  <div>
+                    <span className="text-xs font-bold text-[#1c1b1f]">Route Reviews & Commuter Tips</span>
+                    <p className="text-[11px] text-[#414751]">Share transfer shortcuts or crowded car tips for this route</p>
+                  </div>
+                </div>
+                <span className="material-symbols-outlined text-[20px] text-[#727783]">
+                  {showComments ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+
+              {showComments && (
+                <div className="mt-4 p-4 bg-white rounded-xl border border-[#c1c6d3] shadow-xs">
+                  <DiscussionEmbed
+                    key={`modal-route-${route.id}`}
+                    shortname="smarttransport"
+                    config={routeDisqusConfig}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

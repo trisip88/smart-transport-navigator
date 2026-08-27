@@ -15,6 +15,7 @@ import { RouteDetailModal } from './components/RouteDetailModal';
 import { LiveStatusView } from './components/LiveStatusView';
 import { SavedRoutesView } from './components/SavedRoutesView';
 import { AlertsView } from './components/AlertsView';
+import { CommunityView } from './components/CommunityView';
 import { AppModals } from './components/AppModals';
 import { useTransitStream } from './hooks/useTransitStream';
 import { useGeolocationTracker } from './hooks/useGeolocationTracker';
@@ -279,6 +280,8 @@ export default function App() {
         )}
 
         {activeTab === 'alerts' && <AlertsView alerts={alerts} />}
+
+        {activeTab === 'community' && <CommunityView />}
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
