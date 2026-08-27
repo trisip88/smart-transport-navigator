@@ -331,3 +331,67 @@ apiRouter.get('/onemap/route', async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// TRANSIT TRIP PLANNER (Multimodal OneMap + Singapore Rail/Bus)
+// -------------------------------------------------------------
+
+apiRouter.post('/transit/plan', async (req, res) => {
+  try {
+    const { planTransitRoute } = await import('../server/transit-planner');
+    const { origin, destination, transportMode, sortBy, userLat, userLng } = req.body || {};
+    const result = await planTransitRoute({
+      origin,
+      destination,
+      transportMode,
+      sortBy,
+      userLat,
+      userLng,
+    });
+
+    res.json({
+      status: 'ok',
+      origin: result.origin,
+      destination: result.destination,
+      source: result.source,
+      routesCount: result.routes.length,
+      routes: result.routes,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to calculate transit route' });
+  }
+});
+
+apiRouter.get('/transit/plan', async (req, res) => {
+  try {
+    const { planTransitRoute } = await import('../server/transit-planner');
+    const origin = (req.query.origin as string) || 'Current Location';
+    const destination = (req.query.destination as string) || 'Changi Airport T3';
+    const transportMode = (req.query.transportMode as any) || 'mixed';
+    const sortBy = (req.query.sortBy as any) || 'best_match';
+    const userLat = req.query.userLat ? parseFloat(req.query.userLat as string) : undefined;
+    const userLng = req.query.userLng ? parseFloat(req.query.userLng as string) : undefined;
+
+    const result = await planTransitRoute({
+      origin,
+      destination,
+      transportMode,
+      sortBy,
+      userLat,
+      userLng,
+    });
+
+    res.json({
+      status: 'ok',
+      origin: result.origin,
+      destination: result.destination,
+      source: result.source,
+      routesCount: result.routes.length,
+      routes: result.routes,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to calculate transit route' });
+  }
+});
+

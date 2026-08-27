@@ -128,32 +128,31 @@ async function startServer() {
     res.json(getActiveAlerts());
   });
 
-  app.post('/api/transit/plan', (req, res) => {
-    const { origin, destination, transportMode, sortBy } = req.body || {};
-    let filtered = [...DEFAULT_ROUTES];
+  app.post('/api/transit/plan', async (req, res) => {
+    try {
+      const { planTransitRoute } = await import('./server/transit-planner');
+      const { origin, destination, transportMode, sortBy, userLat, userLng } = req.body || {};
+      const result = await planTransitRoute({
+        origin,
+        destination,
+        transportMode,
+        sortBy,
+        userLat,
+        userLng,
+      });
 
-    if (transportMode === 'bus_only') {
-      filtered = filtered.filter(
-        (r) => r.transportType === 'bus_only' || r.segments.some((s) => s.mode === 'bus')
-      );
-    } else if (transportMode === 'train_only') {
-      filtered = filtered.filter(
-        (r) => r.transportType === 'train_only' || r.segments.some((s) => s.mode === 'train')
-      );
+      res.json({
+        status: 'ok',
+        origin: result.origin,
+        destination: result.destination,
+        source: result.source,
+        routesCount: result.routes.length,
+        routes: result.routes,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to calculate transit route' });
     }
-
-    if (sortBy === 'fastest') {
-      filtered.sort((a, b) => a.totalDurationMinutes - b.totalDurationMinutes);
-    } else if (sortBy === 'least_transfers') {
-      filtered.sort((a, b) => a.segments.length - b.segments.length);
-    }
-
-    res.json({
-      query: { origin, destination, transportMode, sortBy },
-      routesCount: filtered.length,
-      routes: filtered,
-      generatedAt: new Date().toISOString(),
-    });
   });
 
   // 3. High-Precision Geolocation Endpoints

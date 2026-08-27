@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TabType, TransportMode, ScheduleType, SortOption, RouteOption, SavedRoute } from './types';
 import { DEFAULT_ROUTES, SAVED_ROUTES } from './data/mockTransitData';
 import { GlobalNotificationBar, GlobalIncident } from './components/GlobalNotificationBar';
@@ -71,29 +71,39 @@ export default function App() {
   };
 
   // Plan Route calculation calling backend API
-  const handlePlanRoute = async () => {
+  const handlePlanRoute = async (overrideOrigin?: string, overrideDest?: string, overrideMode?: TransportMode) => {
     setIsPlanning(true);
+    const planOrigin = overrideOrigin || origin;
+    const planDest = overrideDest || destination;
+    const planMode = overrideMode || transportMode;
+
     try {
       const res = await fetch('/api/transit/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin,
-          destination,
-          transportMode,
+          origin: planOrigin,
+          destination: planDest,
+          transportMode: planMode,
           sortBy,
+          userLat: userLocation?.lat,
+          userLng: userLocation?.lng,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        setRoutes(data.routes || DEFAULT_ROUTES);
+        if (data.routes && data.routes.length > 0) {
+          setRoutes(data.routes);
+        } else {
+          setRoutes(DEFAULT_ROUTES);
+        }
       } else {
         // Fallback filter
         let filtered = [...DEFAULT_ROUTES];
-        if (transportMode === 'bus_only') {
+        if (planMode === 'bus_only') {
           filtered = DEFAULT_ROUTES.filter((r) => r.transportType === 'bus_only' || r.segments.some((s) => s.mode === 'bus'));
-        } else if (transportMode === 'train_only') {
+        } else if (planMode === 'train_only') {
           filtered = DEFAULT_ROUTES.filter((r) => r.transportType === 'train_only' || r.segments.some((s) => s.mode === 'train'));
         }
         setRoutes(filtered);
@@ -101,9 +111,9 @@ export default function App() {
     } catch (e) {
       console.warn('Backend plan route fallback:', e);
       let filtered = [...DEFAULT_ROUTES];
-      if (transportMode === 'bus_only') {
+      if (planMode === 'bus_only') {
         filtered = DEFAULT_ROUTES.filter((r) => r.transportType === 'bus_only' || r.segments.some((s) => s.mode === 'bus'));
-      } else if (transportMode === 'train_only') {
+      } else if (planMode === 'train_only') {
         filtered = DEFAULT_ROUTES.filter((r) => r.transportType === 'train_only' || r.segments.some((s) => s.mode === 'train'));
       }
       setRoutes(filtered);
@@ -111,6 +121,28 @@ export default function App() {
       setIsPlanning(false);
     }
   };
+
+  // Initial Route Plan on mount
+  useEffect(() => {
+    handlePlanRoute();
+  }, []);
+
+  // Re-plan when sort by changes
+  useEffect(() => {
+    if (routes.length > 0) {
+      const sorted = [...routes];
+      if (sortBy === 'fastest') {
+        sorted.sort((a, b) => a.totalDurationMinutes - b.totalDurationMinutes);
+      } else if (sortBy === 'least_transfers') {
+        sorted.sort((a, b) => a.segments.length - b.segments.length);
+      } else if (sortBy === 'least_walking') {
+        const walkDur = (r: RouteOption) =>
+          r.segments.filter((s) => s.mode === 'walk').reduce((acc, s) => acc + s.durationMinutes, 0);
+        sorted.sort((a, b) => walkDur(a) - walkDur(b));
+      }
+      setRoutes(sorted);
+    }
+  }, [sortBy]);
 
   // Toggle Save Route
   const handleSaveRoute = (route: RouteOption) => {
@@ -136,7 +168,7 @@ export default function App() {
     setDestination(to);
     setTransportMode(mode);
     setActiveTab('plan');
-    handlePlanRoute();
+    handlePlanRoute(from, to, mode);
   };
 
   const handleDeleteSavedRoute = (id: string) => {
@@ -200,15 +232,9 @@ export default function App() {
               transportMode={transportMode}
               onTransportModeChange={(mode) => {
                 setTransportMode(mode);
-                let filtered = [...DEFAULT_ROUTES];
-                if (mode === 'bus_only') {
-                  filtered = DEFAULT_ROUTES.filter((r) => r.transportType === 'bus_only' || r.segments.some((s) => s.mode === 'bus'));
-                } else if (mode === 'train_only') {
-                  filtered = DEFAULT_ROUTES.filter((r) => r.transportType === 'train_only' || r.segments.some((s) => s.mode === 'train'));
-                }
-                setRoutes(filtered);
+                handlePlanRoute(origin, destination, mode);
               }}
-              onPlanRoute={handlePlanRoute}
+              onPlanRoute={() => handlePlanRoute()}
               isPlanning={isPlanning}
               userLocation={userLocation}
               isLiveGpsActive={isLiveGpsActive}

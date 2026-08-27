@@ -58,6 +58,12 @@ export const TripPlannerPanel: React.FC<TripPlannerPanelProps> = ({
   const [showWeatherDetail, setShowWeatherDetail] = useState(false);
   const [showGpsDetails, setShowGpsDetails] = useState(false);
 
+  // Live OneMap Search Results state
+  const [liveOriginResults, setLiveOriginResults] = useState<PlaceItem[]>([]);
+  const [liveDestResults, setLiveDestResults] = useState<PlaceItem[]>([]);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
+  const [isSearchingDest, setIsSearchingDest] = useState(false);
+
   const originInputRef = useRef<HTMLInputElement>(null);
   const destInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,15 +78,83 @@ export const TripPlannerPanel: React.FC<TripPlannerPanelProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredOriginPlaces = POPULAR_PLACES.filter((p) =>
-    p.name.toLowerCase().includes(origin.toLowerCase()) ||
-    (p.code && p.code.toLowerCase().includes(origin.toLowerCase()))
-  );
+  // Debounced OneMap search for Origin
+  useEffect(() => {
+    if (!origin || origin.length < 2 || origin.toLowerCase().includes('current')) {
+      setLiveOriginResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingOrigin(true);
+      try {
+        const res = await fetch(`/api/onemap/search?searchVal=${encodeURIComponent(origin)}&pageNum=1`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && data.results.length > 0) {
+            const places: PlaceItem[] = data.results.slice(0, 6).map((r: any, idx: number) => ({
+              id: `onemap-orig-${idx}`,
+              name: r.BUILDING && r.BUILDING !== 'NIL' ? r.BUILDING : r.SEARCHVAL || r.ROAD_NAME,
+              address: r.ADDRESS || r.ROAD_NAME || 'Singapore',
+              code: r.POSTAL && r.POSTAL !== 'NIL' ? r.POSTAL : undefined,
+              category: 'station',
+            }));
+            setLiveOriginResults(places);
+          }
+        }
+      } catch (e) {
+        // Fallback silently to static list
+      } finally {
+        setIsSearchingOrigin(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [origin]);
 
-  const filteredDestPlaces = POPULAR_PLACES.filter((p) =>
-    p.name.toLowerCase().includes(destination.toLowerCase()) ||
-    (p.code && p.code.toLowerCase().includes(destination.toLowerCase()))
-  );
+  // Debounced OneMap search for Destination
+  useEffect(() => {
+    if (!destination || destination.length < 2) {
+      setLiveDestResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingDest(true);
+      try {
+        const res = await fetch(`/api/onemap/search?searchVal=${encodeURIComponent(destination)}&pageNum=1`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && data.results.length > 0) {
+            const places: PlaceItem[] = data.results.slice(0, 6).map((r: any, idx: number) => ({
+              id: `onemap-dest-${idx}`,
+              name: r.BUILDING && r.BUILDING !== 'NIL' ? r.BUILDING : r.SEARCHVAL || r.ROAD_NAME,
+              address: r.ADDRESS || r.ROAD_NAME || 'Singapore',
+              code: r.POSTAL && r.POSTAL !== 'NIL' ? r.POSTAL : undefined,
+              category: 'landmark',
+            }));
+            setLiveDestResults(places);
+          }
+        }
+      } catch (e) {
+        // Fallback silently to static list
+      } finally {
+        setIsSearchingDest(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [destination]);
+
+  const filteredOriginPlaces = liveOriginResults.length > 0
+    ? liveOriginResults
+    : POPULAR_PLACES.filter((p) =>
+        p.name.toLowerCase().includes(origin.toLowerCase()) ||
+        (p.code && p.code.toLowerCase().includes(origin.toLowerCase()))
+      );
+
+  const filteredDestPlaces = liveDestResults.length > 0
+    ? liveDestResults
+    : POPULAR_PLACES.filter((p) =>
+        p.name.toLowerCase().includes(destination.toLowerCase()) ||
+        (p.code && p.code.toLowerCase().includes(destination.toLowerCase()))
+      );
 
   const handleSnapGpsToOrigin = () => {
     if (userLocation?.formattedAddress) {

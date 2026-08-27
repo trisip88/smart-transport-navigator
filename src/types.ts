@@ -8,7 +8,7 @@ export interface TransitSegment {
   mode: 'walk' | 'train' | 'bus';
   durationMinutes: number;
   label: string; // e.g. "5 min", "NSL", "168", "858", "EWL"
-  lineCode?: 'NSL' | 'EWL' | 'CCL' | 'DTL' | 'TEL' | 'NEL' | 'BPLRT';
+  lineCode?: 'NSL' | 'EWL' | 'CCL' | 'DTL' | 'TEL' | 'NEL' | 'BPLRT' | string;
   lineName?: string;
   serviceNumber?: string;
   fromStop: string;
@@ -42,7 +42,7 @@ export interface RouteOption {
   arrivalTime: string;
   status: 'On Time' | 'Minor Delay' | 'Disrupted' | 'Heavy Rain Advisory';
   statusColor?: string;
-  badge?: 'Most Optimal' | 'Fastest' | 'Least Transfers' | 'Direct Bus' | 'Cheapest';
+  badge?: 'Most Optimal' | 'Fastest' | 'Least Transfers' | 'Direct Bus' | 'Cheapest' | 'Fast Alternative' | string;
   isOptimal?: boolean;
   fare: string;
   calories: number;
@@ -51,6 +51,8 @@ export interface RouteOption {
   detailedSteps: DetailedStep[];
   transportType: 'mixed' | 'bus_only' | 'train_only';
 }
+
+export type RouteSegment = TransitSegment;
 
 export interface PlaceItem {
   id: string;
