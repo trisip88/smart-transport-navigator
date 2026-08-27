@@ -26,53 +26,49 @@ let inMemoryTokenCache: CachedToken | null = null;
  * Uses ONEMAP_API_TOKEN if provided directly, otherwise authenticates via ONEMAP_EMAIL & ONEMAP_PASSWORD.
  */
 export async function getOneMapToken(): Promise<string> {
+  const email = getOneMapEmail();
+  const password = getOneMapPassword();
+
+  if (email && password) {
+    const now = Date.now();
+    if (inMemoryTokenCache && inMemoryTokenCache.expiresAt - now > 3600 * 1000) {
+      return inMemoryTokenCache.token;
+    }
+
+    try {
+      const res = await fetch('https://www.onemap.gov.sg/api/auth/post/getToken', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': 'SmartTransportNavigator/2.0',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const token = data.access_token || data.token;
+        if (token) {
+          const expiryDurationMs = 2.5 * 24 * 60 * 60 * 1000;
+          inMemoryTokenCache = {
+            token,
+            expiresAt: now + expiryDurationMs,
+          };
+          return token;
+        }
+      }
+    } catch {
+      // Fallback to direct token if minting had a network issue
+    }
+  }
+
   const directToken = getOneMapDirectToken();
   if (directToken) {
     return directToken;
   }
 
-  const email = getOneMapEmail();
-  const password = getOneMapPassword();
-
-  if (!email || !password) {
-    throw new OneMapCredentialError('credential not configured');
-  }
-
-  const now = Date.now();
-  // If we have a cached token with at least 1 hour of validity left, reuse it
-  if (inMemoryTokenCache && inMemoryTokenCache.expiresAt - now > 3600 * 1000) {
-    return inMemoryTokenCache.token;
-  }
-
-  const res = await fetch('https://www.onemap.gov.sg/api/auth/post/getToken', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'User-Agent': 'SmartTransportNavigator/2.0',
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`OneMap Authentication failed (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  const token = data.access_token || data.token;
-  if (!token) {
-    throw new Error('OneMap did not return an access_token in authentication response');
-  }
-
-  // Tokens last 3 days (approx 259,200s). Set expiration to 2.5 days to be safe
-  const expiryDurationMs = 2.5 * 24 * 60 * 60 * 1000;
-  inMemoryTokenCache = {
-    token,
-    expiresAt: now + expiryDurationMs,
-  };
-
-  return token;
+  throw new OneMapCredentialError('credential not configured');
 }
 
 async function fetchOneMapEndpoint<T = any>(endpointUrl: string): Promise<T> {
